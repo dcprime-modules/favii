@@ -10,15 +10,17 @@ import (
 	"golang.org/x/net/html"
 )
 
-// Favii with client and cache (in future)
+// Favii with client and simple map cache
 type Favii struct {
-	client *http.Client
-	cache  map[string]*MetaInfo
+	client   *http.Client
+	cache    map[string]*MetaInfo
+	useCache bool
 }
 
-// MetaInfo with metadata details
+// MetaInfo with metadata details, this includes the URL used for requesting
+// or calling GetMetaInfo() as well.
 type MetaInfo struct {
-	host  string
+	u     *url.URL
 	Metas []Meta
 	Links []Link
 }
@@ -36,12 +38,13 @@ type Link struct {
 }
 
 // New for new Favii struct with new client
-func New() *Favii {
+func New(useCache bool) *Favii {
 	return &Favii{
 		client: &http.Client{
 			Transport: http.DefaultTransport,
 		},
-		cache: map[string]*MetaInfo{},
+		cache:    map[string]*MetaInfo{},
+		useCache: useCache,
 	}
 }
 
@@ -64,14 +67,29 @@ func (f *Favii) GetMetaInfo(url string) (*MetaInfo, error) {
 // GetFaviconURL for getting favicon URL from the MetaInfo
 func (m *MetaInfo) GetFaviconURL() string {
 	faviconURLs := [2]string{"", ""}
+	if m == nil || m.Links == nil || m.Metas == nil {
+		return ""
+	}
 	for _, l := range m.Links {
 		// strict check on icon
 		if l.Rel == "icon" || l.Rel == "shortcut icon" {
-			faviconURLs[0] = l.Href
+			if strings.HasPrefix(l.Href, "http") {
+				faviconURLs[0] = l.Href
+			} else if strings.HasPrefix(l.Href, "/") {
+				faviconURLs[0] = m.u.Scheme + "://" + m.u.Hostname() + l.Href
+			} else {
+				faviconURLs[0] = m.u.Scheme + "://" + m.u.Hostname() + "/" + l.Href
+			}
 		}
 		// loose check if anything with icon available
 		if strings.Contains(l.Rel, "icon") {
-			faviconURLs[1] = l.Href
+			if strings.HasPrefix(l.Href, "http") {
+				faviconURLs[1] = l.Href
+			} else if strings.HasPrefix(l.Href, "/") {
+				faviconURLs[1] = m.u.Scheme + "://" + m.u.Hostname() + l.Href
+			} else {
+				faviconURLs[1] = m.u.Scheme + "://" + m.u.Hostname() + "/" + l.Href
+			}
 		}
 	}
 	if faviconURLs[0] != "" {
@@ -81,7 +99,7 @@ func (m *MetaInfo) GetFaviconURL() string {
 		return faviconURLs[1]
 	}
 	// in case if nothing is available go for the default one.
-	return m.host + "/favicon.ico"
+	return m.u.Scheme + "://" + m.u.Hostname() + "/favicon.ico"
 }
 
 func (f *Favii) getMetaInfo(u string) (*MetaInfo, error) {
@@ -89,17 +107,17 @@ func (f *Favii) getMetaInfo(u string) (*MetaInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	if m, ok := f.cache[up.Hostname()]; ok {
+	if m, ok := f.cache[up.Hostname()]; ok && f.useCache { // skip this if useCache is false
 		return m, nil
 	}
 	m := &MetaInfo{
 		Metas: []Meta{},
 		Links: []Link{},
-		host:  up.Hostname(),
+		u:     up,
 	}
-	defer func(h string, m *MetaInfo) {
-		f.cache[u] = m
-	}(up.Hostname(), m)
+	defer func(m *MetaInfo) {
+		f.cache[m.u.Hostname()] = m
+	}(m)
 	response, err := f.client.Get(u)
 	if err != nil {
 		return nil, err
@@ -119,29 +137,19 @@ func (f *Favii) getMetaInfo(u string) (*MetaInfo, error) {
 			break
 		}
 
-		if tt != html.SelfClosingTagToken && tt != html.TextToken {
+		if tt != html.SelfClosingTagToken && tt != html.TextToken && tt != html.StartTagToken {
+			// fmt.Println("Skipping:", string(tagname))
 			continue
 		}
 
-		tagname, _ := t.TagName()
-
-		if string(tagname[:]) == "meta" {
-			mt := Meta{}
-			for {
-				tagattrkey, tagattrval, hasMore := t.TagAttr()
-				if string(tagattrkey) == "name" {
-					mt.Name = string(tagattrval)
-				}
-				if string(tagattrkey) == "content" {
-					mt.Content = string(tagattrval)
-				}
-				if !hasMore {
-					break
-				}
-			}
-			m.Metas = append(m.Metas, mt)
+		tagname, hasAttr := t.TagName()
+		if !hasAttr {
+			continue
 		}
-		if string(tagname[:]) == "link" {
+
+		// fmt.Println("Processing:", string(tagname))
+		switch string(tagname[:]) {
+		case "link":
 			lk := Link{}
 			for {
 				tagattrkey, tagattrval, hasMore := t.TagAttr()
@@ -156,6 +164,21 @@ func (f *Favii) getMetaInfo(u string) (*MetaInfo, error) {
 				}
 			}
 			m.Links = append(m.Links, lk)
+		case "meta":
+			mt := Meta{}
+			for {
+				tagattrkey, tagattrval, hasMore := t.TagAttr()
+				if string(tagattrkey) == "name" {
+					mt.Name = string(tagattrval)
+				}
+				if string(tagattrkey) == "content" {
+					mt.Content = string(tagattrval)
+				}
+				if !hasMore {
+					break
+				}
+			}
+			m.Metas = append(m.Metas, mt)
 		}
 	}
 	return m, nil
