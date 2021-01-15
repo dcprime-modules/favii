@@ -3,7 +3,6 @@ package favii
 import (
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 
@@ -125,7 +124,6 @@ func (f *Favii) getMetaInfo(url string) (*MetaInfo, error) {
 				if string(tagattrkey) == "content" {
 					mt.Content = string(tagattrval)
 				}
-				log.Println("attrs", string(tagattrkey), string(tagattrval))
 				if !hasMore {
 					break
 				}
