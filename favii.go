@@ -13,6 +13,7 @@ import (
 // Favii with client and cache (in future)
 type Favii struct {
 	client *http.Client
+	cache  map[string]*MetaInfo
 }
 
 // MetaInfo with metadata details
@@ -78,10 +79,16 @@ func (m *MetaInfo) GetFaviconURL() string {
 }
 
 func (f *Favii) getMetaInfo(url string) (*MetaInfo, error) {
+	if m, ok := f.cache[url]; ok {
+		return m, nil
+	}
 	m := &MetaInfo{
 		Metas: []Meta{},
 		Links: []Link{},
 	}
+	defer func(m *MetaInfo) {
+		f.cache[url] = m
+	}(m)
 	response, err := f.client.Get(url)
 	if err != nil {
 		return nil, err
