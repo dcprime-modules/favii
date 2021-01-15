@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -17,6 +18,7 @@ type Favii struct {
 
 // MetaInfo with metadata details
 type MetaInfo struct {
+	host  string
 	Metas []Meta
 	Links []Link
 }
@@ -75,21 +77,30 @@ func (m *MetaInfo) GetFaviconURL() string {
 	if faviconURLs[0] != "" {
 		return faviconURLs[0]
 	}
-	return faviconURLs[1]
+	if faviconURLs[1] != "" {
+		return faviconURLs[1]
+	}
+	// in case if nothing is available go for the default one.
+	return m.host + "/favicon.ico"
 }
 
-func (f *Favii) getMetaInfo(url string) (*MetaInfo, error) {
-	if m, ok := f.cache[url]; ok {
+func (f *Favii) getMetaInfo(u string) (*MetaInfo, error) {
+	up, err := url.Parse(u)
+	if err != nil {
+		return nil, err
+	}
+	if m, ok := f.cache[up.Hostname()]; ok {
 		return m, nil
 	}
 	m := &MetaInfo{
 		Metas: []Meta{},
 		Links: []Link{},
+		host:  up.Hostname(),
 	}
-	defer func(m *MetaInfo) {
-		f.cache[url] = m
-	}(m)
-	response, err := f.client.Get(url)
+	defer func(h string, m *MetaInfo) {
+		f.cache[u] = m
+	}(up.Hostname(), m)
+	response, err := f.client.Get(u)
 	if err != nil {
 		return nil, err
 	}
