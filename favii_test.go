@@ -1,6 +1,8 @@
 package favii
 
 import (
+	"fmt"
+	"log"
 	"testing"
 )
 
@@ -61,4 +63,18 @@ func TestFavii(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ExampleFavii shows how to get the MetaInfo from an URL and also from that
+// MetaInfo get favicon URL from that.
+func ExampleFavii() {
+	f := New(true)
+	metainfo, err := f.GetMetaInfo("https://git.dcpri.me/modules/favii")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(metainfo.GetFaviconURL())
+	//Output:
+	// https://git.dcpri.me/img/favicon.svg
 }

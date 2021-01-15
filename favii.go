@@ -10,7 +10,8 @@ import (
 	"golang.org/x/net/html"
 )
 
-// Favii with client and simple map cache
+// Favii is basically a client to use the struct. It has an http.Client for
+// doing all HTTP Requests for fetching the HTML Pages
 type Favii struct {
 	client   *http.Client
 	cache    map[string]*MetaInfo
@@ -26,36 +27,41 @@ type MetaInfo struct {
 }
 
 // Meta is a simple struct to keep name and content attributes of an HTML Page
+// mostly contains the details about meta tag
 type Meta struct {
 	Name    string
 	Content string
 }
 
 // Link is a simple struct to keep rel and href attributes of an HTML Page
+// mostly contains the details about link tag
 type Link struct {
 	Rel  string
 	Href string
 }
 
-// New for new Favii struct with new client
+// New creates a new Favii struct with http.DefaultClient and empty map, also
+// an optional cache map
 func New(useCache bool) *Favii {
 	return &Favii{
-		client: &http.Client{
-			Transport: http.DefaultTransport,
-		},
+		client:   http.DefaultClient,
 		cache:    map[string]*MetaInfo{},
 		useCache: useCache,
 	}
 }
 
-// NewWithClient for new Favii struct with existing client
-func NewWithClient(client *http.Client) *Favii {
+// NewWithClient creates a new Favii struct with provided http.Client and all
+// other things similar to New()
+func NewWithClient(client *http.Client, useCache bool) *Favii {
 	return &Favii{
-		client: client,
+		client:   client,
+		cache:    map[string]*MetaInfo{},
+		useCache: useCache,
 	}
 }
 
-// GetMetaInfo for getting meta information
+// GetMetaInfo for getting meta information, it is mainly a wrapper around
+// unexported method getMetaInfo().
 func (f *Favii) GetMetaInfo(url string) (*MetaInfo, error) {
 	m, err := f.getMetaInfo(url)
 	if err != nil {
@@ -64,7 +70,8 @@ func (f *Favii) GetMetaInfo(url string) (*MetaInfo, error) {
 	return m, nil
 }
 
-// GetFaviconURL for getting favicon URL from the MetaInfo
+// GetFaviconURL for getting favicon URL from the MetaInfo, using link tags,
+// or use default /favicon.ico.
 func (m *MetaInfo) GetFaviconURL() string {
 	faviconURLs := [2]string{"", ""}
 	if m == nil || m.Links == nil || m.Metas == nil {
