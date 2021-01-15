@@ -40,6 +40,7 @@ func New() *Favii {
 		client: &http.Client{
 			Transport: http.DefaultTransport,
 		},
+		cache: map[string]*MetaInfo{},
 	}
 }
 
